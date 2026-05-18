@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  role         String    @default("analyst")
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  datasets     Dataset[]
+
+  @@map("users")
+}
+
+model Dataset {
+  id             String          @id @default(uuid())
+  name           String
+  sourceName     String          @map("source_name")
+  rowCount       Int             @default(0) @map("row_count")
+  columnNames    String[]        @map("column_names")
+  status         DatasetStatus   @default(PENDING)
+  healthScore    Float           @default(100.0) @map("health_score")
+  uploadedBy     String          @map("uploaded_by")
+  user           User            @relation(fields: [uploadedBy], references: [id])
+  dataRows       DataRow[]
+  anomalies      Anomaly[]
+  processingJobs ProcessingJob[]
+  alerts         Alert[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("datasets")
+}
+
+model DataRow {
+  id        String   @id @default(uuid())
+  datasetId String   @map("dataset_id")
+  dataset   Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  rowData   Json     @map("row_data")
+  rowIndex  Int      @map("row_index")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([datasetId])
+  @@map("data_rows")
+}
+
+model Anomaly {
+  id          String         @id @default(uuid())
+  datasetId   String         @map("dataset_id")
+  dataset     Dataset        @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  type        String
+  severity    AnomalySeverity
+  message     String
+  confidence  Float
+  columnName  String?        @map("column_name")
+  rowIndex    Int?           @map("row_index")
+  metadata    Json?
+  resolved    Boolean        @default(false)
+  detectedAt  DateTime       @default(now()) @map("detected_at")
+  alert       Alert?
+
+  @@index([datasetId])
+  @@index([severity])
+  @@map("anomalies")
+}
+
+model ProcessingJob {
+  id           String    @id @default(uuid())
+  datasetId    String    @map("dataset_id")
+  dataset      Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  bullJobId    String?   @map("bull_job_id")
+  status       JobStatus @default(QUEUED)
+  errorMessage String?   @map("error_message")
+  progress     Int       @default(0)
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([datasetId])
+  @@map("processing_jobs")
+}
+
+model Alert {
+  id           String         @id @default(uuid())
+  anomalyId    String         @unique @map("anomaly_id")
+  anomaly      Anomaly        @relation(fields: [anomalyId], references: [id], onDelete: Cascade)
+  datasetId    String         @map("dataset_id")
+  dataset      Dataset        @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  title        String
+  severity     AnomalySeverity
+  acknowledged Boolean        @default(false)
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([datasetId])
+  @@index([severity])
+  @@map("alerts")
+}
+
+enum DatasetStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AnomalySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
